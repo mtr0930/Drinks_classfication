@@ -160,7 +160,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                     }
 
                     // 최대값 인덱스에 해당하는 음료수 정보 출력
-                    // searchDrink함수는 firebase db에서 예측한 음료수(answer)정보를 가져와서 출력하는 
+                    // searchDrink함수는 firebase db에서 예측한 음료수(answer)정보를 가져와서 출력
                     switch(max_index){
                         case 0:
                             answer = "cider";
