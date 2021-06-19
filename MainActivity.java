@@ -60,16 +60,6 @@ import java.util.Locale;
 import java.util.Map;
 
 
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
-import retrofit2.Retrofit;
-
 public class MainActivity extends AppCompatActivity implements TextToSpeech.OnInitListener{
     private static final int CAMERA_PERMISSION_CODE=100;
     private static final int STORAGE_PERMISSION_CODE=101;
@@ -92,12 +82,16 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Text To Speech 모듈 객체 선언
         TTS = new TextToSpeech(this, this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        
+        // 권한 요청함수(권한내용: 카메라, 내부 저장소 접근)
         checkPermission(Manifest.permission.CAMERA, CAMERA_PERMISSION_CODE);
         checkPermission(Manifest.permission.READ_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
-
+        
+        // 버튼, 이미지뷰 객체 
         imgView = (ImageView) findViewById(R.id.imageView);
         select = (Button) findViewById(R.id.btn_select);
         predict = (Button) findViewById(R.id.btn_predict);
@@ -116,8 +110,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         camera.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view) {
-                //Intent camera_intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-                //startActivityForResult(camera_intent, CAMERA_PERMISSION_CODE);
+                // 촬영한 이미지 Image view에 출력
                 dispatchTakePictureIntent();
                 try {
                     imageFile = createImageFile();
@@ -127,6 +120,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                 }
             }
         });
+        
         // predict 버튼 클릭시 동작.
         predict.setOnClickListener(new View.OnClickListener(){
             @Override
@@ -166,6 +160,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                     }
 
                     // 최대값 인덱스에 해당하는 음료수 정보 출력
+                    // searchDrink함수는 firebase db에서 예측한 음료수(answer)정보를 가져와서 출력하는 
                     switch(max_index){
                         case 0:
                             answer = "cider";
@@ -211,8 +206,6 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                 }
 
 
-
-
             }
         });
 
@@ -243,14 +236,16 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             }
         });
     }
+    
     // camera버튼 클릭시 실행되는 함수
     private void dispatchTakePictureIntent() {
         Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
         startActivityForResult(takePictureIntent, CAMERA_PERMISSION_CODE);
     }
+    
     // 사진 촬영한 image file을 생성.(저장은 따로 구현하지 않았음)
     private File createImageFile() throws IOException {
-        // Create an image file name
+        // 이미지 파일 이름 생성
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String imageFileName = "JPEG_" + timeStamp + "_";
         File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
@@ -260,7 +255,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                 storageDir      /* directory */
         );
 
-        // Save a file: path for use with ACTION_VIEW intents
+        // image의 파일 경로를 가져오고 image를 반환
         filePath = image.getAbsolutePath();
         return image;
     }
@@ -275,7 +270,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         //bitmap으로 부터 픽셀 정보를 가져와서 intValues에 넣어줌.
         bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 
-        // Convert the image to floating point.
+        // 이미지 픽셀값 정규화
         int pixel = 0;
 
         for (int i = 0; i < 150; ++i) {
@@ -291,6 +286,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         }
         return imgData;
     }
+    
     // 권한 요청 함수
     public void checkPermission(String permission, int requestCode){
         if(ContextCompat.checkSelfPermission(MainActivity.this, permission) == PackageManager.PERMISSION_DENIED){
@@ -300,6 +296,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             Toast.makeText(MainActivity.this, "Permission already granted", Toast.LENGTH_SHORT).show();
         }
     }
+    
     // select 버튼 클릭시 실행되는 함수
     void imageChooser() {
         Intent i = new Intent();
@@ -307,6 +304,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         i.setAction(Intent.ACTION_GET_CONTENT);
         startActivityForResult(Intent.createChooser(i, "Select Picture"),SELECT_PICTURE);
     }
+    
     // 권한 요청이 허용되면 toast message 출력
     @Override
     public void onRequestPermissionsResult(int requestCode,
@@ -333,6 +331,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             }
         }
     }
+    
     // 접근 권한이 있고, 사진을 성공적으로 intent로 가져왔으면 실행되는 부분
     // 촬영하거나 갤러리에서 선택한 이미지를 화면에 출력하는 함수
     @Override
@@ -357,9 +356,11 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             }
         }
     }
+    
     // TTS 객체를 initialization하기 위한 함수
     @Override
     public void onInit(int i) {
+        // 객체가 성공적으로 초기화 됬다면 실행
         if(i == TextToSpeech.SUCCESS){
             int result = TTS.setLanguage(Locale.KOREAN);
             TTS.setSpeechRate(1);
