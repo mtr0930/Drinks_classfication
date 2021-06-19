@@ -337,7 +337,9 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        //성공적으로 결과를 가져왔다면 아래 실행
         if (resultCode == RESULT_OK) {
+            // 요청 코드가 select버튼을 통한 동작
             if (requestCode == SELECT_PICTURE) {
                 imgView.setImageURI(data.getData());
 
@@ -349,6 +351,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                 }
 
             }
+            // 요청 코드가 camera 버튼을 통한 동작
             if (requestCode == CAMERA_PERMISSION_CODE) {
                 Bitmap photo = (Bitmap) data.getExtras().get("data");
                 img = photo;
