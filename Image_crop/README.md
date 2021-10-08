@@ -9,3 +9,5 @@
 
 ### 각 단계별 실행 이미지
 흑백이미지 대신 원본 이미지로 출력
+<img src="/Image_crop/image/gray_cider.PNG"  width="700" height="370">
+
