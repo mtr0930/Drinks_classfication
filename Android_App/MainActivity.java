@@ -2,9 +2,11 @@ package com.example.custommodel;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 
 import android.Manifest;
 import android.content.ContentUris;
@@ -30,10 +32,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 
-import com.example.custommodel.ml.CustomModel;
-import com.example.custommodel.ml.Modeltf;
-import com.example.custommodel.ml.NewDrinksModel;
-import com.example.custommodel.ml.TeamDrinksModel;
+
+import com.example.custommodel.ml.FinalModel;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.firestore.CollectionReference;
@@ -60,10 +60,23 @@ import java.util.Locale;
 import java.util.Map;
 
 
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
+
 public class MainActivity extends AppCompatActivity implements TextToSpeech.OnInitListener{
     private static final int CAMERA_PERMISSION_CODE=100;
     private static final int STORAGE_PERMISSION_CODE=101;
     private static final int SELECT_PICTURE = 200;
+    private static final int REQUEST_VIDEO_CAPTURE = 1;
     // Text를 음성으로 출력하기 위한 모듈 TTS
     TextToSpeech TTS;
     // Firebase Firestore Cloud와 연결
@@ -73,25 +86,25 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
     private Button select, predict, camera;
     private TextView tv;
     private Bitmap img;
-    private float[] results = new float[9];
+    private float[] results = new float[10];
     private String answer = "";
     float max = 0;
     int max_index = 0;
     String filePath;
     File imageFile;
+    Uri photoURI;
+    String BASE_URL = "http://192.168.123.103:5000/";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Text To Speech 모듈 객체 선언
         TTS = new TextToSpeech(this, this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
-        // 권한 요청함수(권한내용: 카메라, 내부 저장소 접근)
+        ActionBar actionBar = getSupportActionBar();
+        actionBar.hide();
         checkPermission(Manifest.permission.CAMERA, CAMERA_PERMISSION_CODE);
         checkPermission(Manifest.permission.READ_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
-        
-        // 버튼, 이미지뷰 객체 
+
         imgView = (ImageView) findViewById(R.id.imageView);
         select = (Button) findViewById(R.id.btn_select);
         predict = (Button) findViewById(R.id.btn_predict);
@@ -110,17 +123,9 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         camera.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view) {
-                // 촬영한 이미지 Image view에 출력
                 dispatchTakePictureIntent();
-                try {
-                    imageFile = createImageFile();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    Log.e("image", e.toString());
-                }
             }
         });
-        
         // predict 버튼 클릭시 동작.
         predict.setOnClickListener(new View.OnClickListener(){
             @Override
@@ -131,7 +136,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                 img = Bitmap.createScaledBitmap(img, 150, 150, true);
                 try {
                     // 여기서부터는 tflite 모델에 사진을 입력으로 넣고 결과를 받는 과정
-                    TeamDrinksModel model = TeamDrinksModel.newInstance(getApplicationContext());
+                    FinalModel model = FinalModel.newInstance(getApplicationContext());
 
                     // 모델의 입력 형식에 맞는 입력 객체 생성
                     TensorBuffer inputFeature0 = TensorBuffer.createFixedSize(new int[]{1, 150, 150, 3}, DataType.FLOAT32);
@@ -142,7 +147,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                     inputFeature0.loadBuffer(byteBuffer);
 
                     // 모델을 실행시키고 결과를 받음
-                    TeamDrinksModel.Outputs outputs = model.process(inputFeature0);
+                    FinalModel.Outputs outputs = model.process(inputFeature0);
                     TensorBuffer outputFeature0 = outputs.getOutputFeature0AsTensorBuffer();
 
                     // 모델을 더이상 사용하지 않으므로 close함
@@ -150,7 +155,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                     // 확률이 가장 높은 것을 인덱스로 가져옴 max는 확률을 비교하기 위한 변수, max_index는 최대값 인덱스 저장위한 변수
                     max = 0;
                     max_index = 0;
-                    for(int i=0; i<9; i++){
+                    for(int i=0; i<10; i++){
 
                         results[i] = outputFeature0.getFloatArray()[i];
                         if (max < results[i]){
@@ -160,7 +165,6 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                     }
 
                     // 최대값 인덱스에 해당하는 음료수 정보 출력
-                    // searchDrink함수는 firebase db에서 예측한 음료수(answer)정보를 가져와서 출력
                     switch(max_index){
                         case 0:
                             answer = "cider";
@@ -198,12 +202,20 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                             answer = "sprite";
                             searchDrink(answer);
                             break;
+                        case 9:
+                            answer = "toreta";
+                            searchDrink(answer);
+                            break;
 
                     }
 
                 } catch (IOException e) {
                     Log.d("error", e.toString());
                 }
+                if(photoURI!=null){
+                    uploadFile(photoURI);
+                }
+
 
 
             }
@@ -223,29 +235,58 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             public void onComplete(@NonNull Task<DocumentSnapshot> task) {
                 if(task.isSuccessful()){
                     DocumentSnapshot doc = task.getResult();
-                    if(doc.exists()){
+                    if(doc.exists() && max > 0.8){
+                        System.out.println("확률"+ Float.toString(max));
                         Log.d("Document", doc.getData().toString());
                         Log.d("Document", doc.get("name").toString());
-                        // db 쿼리를 통해 가져온 name(음료수 이름)과 확률을 출력
-                        tv.setText("음료수 이름  " + doc.get("name").toString() + "\n" + "확률 "+ String.valueOf(max*100) + "%");
+                        String num = String.format("%.1f", max*100);
+                        tv.setText("음료수 이름 : " + doc.get("name").toString() + "\n" +
+                                        "음료수 종류 : " + doc.get("type").toString() + "\n" +
+                                "음료수 맛 : " + doc.get("flavor").toString() + "\n"
+                                //+ "확률 : "+ num + "%"
+                        );
                         speak();
                     }else{
+                        tv.setText("다시 시도해주세요");
+                        speak();
                         Log.d("Document", "No data");
                     }
                 }
             }
         });
     }
-    
     // camera버튼 클릭시 실행되는 함수
     private void dispatchTakePictureIntent() {
         Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        startActivityForResult(takePictureIntent, CAMERA_PERMISSION_CODE);
+        if(takePictureIntent.resolveActivity(getPackageManager()) != null){
+            File photoFile = null;
+            try{
+                photoFile = createImageFile();
+            } catch (IOException e) {
+                e.printStackTrace();
+                Log.e("error", "image file not created");
+            }
+            if(photoFile != null){
+                photoURI = FileProvider.getUriForFile(this,
+                        "com.example.custommodel.fileprovider",
+                        photoFile);
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+                startActivityForResult(takePictureIntent, CAMERA_PERMISSION_CODE);
+
+            }
+        }
+        //startActivityForResult(takePictureIntent, CAMERA_PERMISSION_CODE);
     }
-    
+    // video 캡쳐하는 함수
+    private void dispatchTakeVideoIntent() {
+        Intent takeVideoIntent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+        if (takeVideoIntent.resolveActivity(getPackageManager()) != null) {
+            startActivityForResult(takeVideoIntent, REQUEST_VIDEO_CAPTURE);
+        }
+    }
     // 사진 촬영한 image file을 생성.(저장은 따로 구현하지 않았음)
     private File createImageFile() throws IOException {
-        // 이미지 파일 이름 생성
+        // Create an image file name
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String imageFileName = "JPEG_" + timeStamp + "_";
         File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
@@ -255,10 +296,11 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
                 storageDir      /* directory */
         );
 
-        // image의 파일 경로를 가져오고 image를 반환
+        // Save a file: path for use with ACTION_VIEW intents
         filePath = image.getAbsolutePath();
         return image;
     }
+
 
     // tflite모델 입력을 위해 정규화 bitmap을 bytebuffer로 변환하고 정규화 실행
     private ByteBuffer convertBitmapToByteBuffer(Bitmap bp) {
@@ -270,7 +312,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         //bitmap으로 부터 픽셀 정보를 가져와서 intValues에 넣어줌.
         bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 
-        // 이미지 픽셀값 정규화
+        // Convert the image to floating point.
         int pixel = 0;
 
         for (int i = 0; i < 150; ++i) {
@@ -286,7 +328,6 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         }
         return imgData;
     }
-    
     // 권한 요청 함수
     public void checkPermission(String permission, int requestCode){
         if(ContextCompat.checkSelfPermission(MainActivity.this, permission) == PackageManager.PERMISSION_DENIED){
@@ -296,7 +337,6 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             Toast.makeText(MainActivity.this, "Permission already granted", Toast.LENGTH_SHORT).show();
         }
     }
-    
     // select 버튼 클릭시 실행되는 함수
     void imageChooser() {
         Intent i = new Intent();
@@ -304,7 +344,6 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         i.setAction(Intent.ACTION_GET_CONTENT);
         startActivityForResult(Intent.createChooser(i, "Select Picture"),SELECT_PICTURE);
     }
-    
     // 권한 요청이 허용되면 toast message 출력
     @Override
     public void onRequestPermissionsResult(int requestCode,
@@ -331,39 +370,31 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             }
         }
     }
-    
     // 접근 권한이 있고, 사진을 성공적으로 intent로 가져왔으면 실행되는 부분
     // 촬영하거나 갤러리에서 선택한 이미지를 화면에 출력하는 함수
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        //성공적으로 결과를 가져왔다면 아래 실행
         if (resultCode == RESULT_OK) {
-            // 요청 코드가 select버튼을 통한 동작
             if (requestCode == SELECT_PICTURE) {
                 imgView.setImageURI(data.getData());
 
                 Uri uri = data.getData();
 
                 if (null != uri){
-
+                    photoURI = uri;
                     imgView.setImageURI(uri);
                 }
 
             }
-            // 요청 코드가 camera 버튼을 통한 동작
             if (requestCode == CAMERA_PERMISSION_CODE) {
-                Bitmap photo = (Bitmap) data.getExtras().get("data");
-                img = photo;
-                imgView.setImageBitmap(photo);
+                imgView.setImageURI(photoURI);
             }
         }
     }
-    
     // TTS 객체를 initialization하기 위한 함수
     @Override
     public void onInit(int i) {
-        // 객체가 성공적으로 초기화 됬다면 실행
         if(i == TextToSpeech.SUCCESS){
             int result = TTS.setLanguage(Locale.KOREAN);
             TTS.setSpeechRate(1);
@@ -388,4 +419,47 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             TTS.speak(message, TextToSpeech.QUEUE_FLUSH, null, null);
         }
     }
+
+
+
+    private void uploadFile(Uri fileUri){
+        FileUtils fileutils = new FileUtils(MainActivity.this);
+        File originalFile = new File(fileutils.getPath(fileUri));
+        RequestBody filePart = RequestBody.create(originalFile, MediaType.parse(getContentResolver().getType(fileUri)));
+        MultipartBody.Part file = MultipartBody.Part.createFormData("file", originalFile.getName(), filePart);
+
+        Retrofit.Builder builder = new Retrofit.Builder()
+                .baseUrl(BASE_URL)
+                .addConverterFactory(GsonConverterFactory.create());
+        Retrofit retrofit = builder.build();
+        UserClient client = retrofit.create(UserClient.class);
+        Call<drinks> call = client.uploadPhoto(file);
+        call.enqueue(new Callback<drinks>() {
+            @Override
+            public void onResponse(Call<drinks> call, Response<drinks> response) {
+                Toast.makeText(MainActivity.this, "Image uploaded", Toast.LENGTH_SHORT).show();
+                if(!response.isSuccessful()){
+                    Log.d("prediction", "response failed");
+                    return;
+                }
+
+                String drink_name= response.body().getName();
+                String drink_type = response.body().getType();
+                String drink_flavor = response.body().getFlavor();
+                String drink_cautions = response.body().getCautions();
+                System.out.println("성공!!!!");
+                System.out.println(drink_name);
+                System.out.println(drink_type);
+                System.out.println(drink_flavor);
+                System.out.println(drink_cautions);
+            }
+
+            @Override
+            public void onFailure(Call<drinks> call, Throwable t) {
+                Toast.makeText(MainActivity.this, "Failed", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+    }
+
 }// Activity 끝
